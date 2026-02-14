@@ -36,7 +36,7 @@ function formatAxiosError(error: unknown): string {
 
 function ensureXuiSuccess(response: { data?: unknown }, action: string): void {
   const payload = response.data as { success?: boolean; msg?: string } | undefined;
-  if (payload && typeof payload.success === 'boolean' && payload.success === false) {
+  if (payload && typeof payload.success === 'boolean' && !payload.success) {
     throw new Error(`${action} failed: ${payload.msg ?? 'unknown reason'}`);
   }
 }
