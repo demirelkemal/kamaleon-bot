@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+  BLOCKED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FAILED
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  FAILED
+}
+
+model Plan {
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  durationDays  Int
+  priceCents    Int
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  orders        Order[]
+  subscriptions Subscription[]
+}
+
+model User {
+  id            String         @id @default(cuid())
+  telegramId    BigInt         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  orders        Order[]
+  subscriptions Subscription[]
+  vpnAccount    VpnAccount?
+}
+
+model Subscription {
+  id                String             @id @default(cuid())
+  status            SubscriptionStatus @default(ACTIVE)
+  startsAt          DateTime           @default(now())
+  expiresAt         DateTime
+  needsProvisioning Boolean            @default(false)
+  lastProvisionedAt DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  userId            String
+  planId            String?
+  user              User               @relation(fields: [userId], references: [id])
+  plan              Plan?              @relation(fields: [planId], references: [id])
+
+  @@index([userId, expiresAt])
+}
+
+model VpnAccount {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  xuiClientId      String
+  xuiInboundId     Int
+  vlessUri         String?
+  lastProvisionedAt DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id])
+}
+
+model Order {
+  id                String       @id @default(cuid())
+  status            OrderStatus  @default(PENDING_PAYMENT)
+  providerPaymentId String?      @unique
+  amountCents       Int
+  currency          String
+  paidAt            DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  userId            String
+  planId            String
+  user              User         @relation(fields: [userId], references: [id])
+  plan              Plan         @relation(fields: [planId], references: [id])
+  paymentEvents     PaymentEvent[]
+}
+
+model PaymentEvent {
+  id                String        @id @default(cuid())
+  eventId           String        @unique
+  providerPaymentId String
+  status            PaymentStatus
+  amountCents       Int
+  currency          String
+  payload           Json
+  createdAt         DateTime      @default(now())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
