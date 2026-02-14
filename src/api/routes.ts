@@ -138,7 +138,17 @@ export function createApiRouter(repository: CoreRepository): Router {
   router.get('/vpn/config', async (req, res, next) => {
     try {
       const query = subscriptionQuerySchema.parse(req.query);
-      const configData = await repository.getVpnConfig(query.telegramId);
+      let configData = await repository.getVpnConfig(query.telegramId);
+
+      if (configData.status !== 'ready') {
+        try {
+          await ensureUserProvisionedByTelegramId(query.telegramId);
+          configData = await repository.getVpnConfig(query.telegramId);
+        } catch (provisionError) {
+          logger.warn({ provisionError, telegramId: query.telegramId.toString() }, 'Provisioning retry failed on vpn/config');
+        }
+      }
+
       if (configData.status === 'ready' && configData.vlessUri) {
         const qrCodeDataUrl = await QRCode.toDataURL(configData.vlessUri, { width: 512, errorCorrectionLevel: 'M' });
         res.status(200).json({ ...configData, qrCodeDataUrl });

@@ -69,16 +69,14 @@ async function sendProfile(chatId: number, telegramId: string, bot: Bot): Promis
   );
 }
 
-function instructionsText(vlessUri: string): string {
+function instructionsText(vlessUri: string, subscriptionUrl: string | null): string {
+  const subscriptionBlock = subscriptionUrl
+    ? ['Ссылка с инструкциями и автонастройкой:', subscriptionUrl, ''].join('\n')
+    : '';
+
   return [
     'Инструкции по подключению:',
-    `iOS: ${config.vpnIosUrl}`,
-    `Android: ${config.vpnAndroidUrl}`,
-    `Windows: ${config.vpnWindowsUrl}`,
-    `macOS: ${config.vpnMacosUrl}`,
-    '',
-    'VLESS URI:',
-    vlessUri
+    subscriptionBlock,
   ].join('\n');
 }
 
@@ -261,9 +259,9 @@ export function createTelegramBot(): Bot | null {
       : await QRCode.toBuffer(vpnConfig.vlessUri, { width: 512, type: 'png' });
 
     await ctx.replyWithPhoto(new InputFile(qr, 'vpn.png'), {
-      caption: instructionsText(vpnConfig.vlessUri)
+      caption: instructionsText(vpnConfig.vlessUri, vpnConfig.subscriptionUrl)
     });
-    await ctx.reply(`Ссылка VLESS:\n${vpnConfig.vlessUri}`);
+    await ctx.reply(`${vpnConfig.vlessUri}`);
   });
 
   bot.catch((error) => {

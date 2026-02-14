@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { HttpError } from '../api/errors';
@@ -28,6 +28,17 @@ function buildVlessUri(clientId: string, email: string, telegramId: bigint): str
   if (config.vpnPublicFp) params.set('fp', config.vpnPublicFp);
 
   return `vless://${clientId}@${config.vpnPublicHost}:${config.vpnPublicPort}?${params.toString()}#${encodeURIComponent(buildTag(telegramId))}`;
+}
+
+function generateSubId(): string {
+  return randomBytes(8).toString('hex');
+}
+
+function buildSubscriptionUrl(subId: string): string | null {
+  if (!config.threeXUiSubscriptionBaseUrl) {
+    return null;
+  }
+  return `${config.threeXUiSubscriptionBaseUrl}?name=${encodeURIComponent(subId)}`;
 }
 
 async function getActiveProvisioningTargetByUserId(userId: string) {
@@ -76,12 +87,15 @@ async function ensureUserProvisionedByUserId(userId: string): Promise<void> {
   }
 
   const clientId = target.user.vpnAccount?.xuiClientId ?? randomUUID();
+  const subId = target.user.vpnAccount?.xuiSubId ?? generateSubId();
   const email = `tg-${target.user.telegramId.toString()}`;
   const vlessUri = buildVlessUri(clientId, email, target.user.telegramId);
+  const subscriptionUrl = buildSubscriptionUrl(subId);
 
   await xuiService.upsertClient({
     clientId,
     email,
+    subId,
     expiresAt: target.subscription.expiresAt
   }).catch((error) => {
     throw new HttpError(502, `3x-ui provision failed: ${error instanceof Error ? error.message : 'unknown error'}`);
@@ -93,16 +107,20 @@ async function ensureUserProvisionedByUserId(userId: string): Promise<void> {
       where: { userId: target.user.id },
       update: {
         xuiClientId: clientId,
+        xuiSubId: subId,
         xuiInboundId: config.threeXUiInboundId,
         vlessUri,
+        subscriptionUrl,
         deletedAt: null,
         lastProvisionedAt: now
       },
       create: {
         userId: target.user.id,
         xuiClientId: clientId,
+        xuiSubId: subId,
         xuiInboundId: config.threeXUiInboundId,
         vlessUri,
+        subscriptionUrl,
         deletedAt: null,
         lastProvisionedAt: now
       }

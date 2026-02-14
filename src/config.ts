@@ -36,6 +36,9 @@ export const config = {
   threeXUiPassword: process.env.THREEXUI_PASSWORD ?? '',
   threeXUiTwoFactor: process.env.THREEXUI_TWO_FACTOR ?? '',
   threeXUiInboundId: Number(process.env.THREEXUI_INBOUND_ID ?? '1'),
+  threeXUiSubscriptionBaseUrl: process.env.THREEXUI_SUBSCRIPTION_BASE_URL
+    ? normalizeBaseUrl(process.env.THREEXUI_SUBSCRIPTION_BASE_URL)
+    : '',
   vpnPublicHost: process.env.VPN_PUBLIC_HOST ?? '',
   vpnPublicPort: Number(process.env.VPN_PUBLIC_PORT ?? '443'),
   vpnPublicSecurity: process.env.VPN_PUBLIC_SECURITY ?? 'reality',

@@ -69,8 +69,10 @@ model VpnAccount {
   id               String   @id @default(cuid())
   userId           String   @unique
   xuiClientId      String
+  xuiSubId         String?
   xuiInboundId     Int
   vlessUri         String?
+  subscriptionUrl  String?
   lastProvisionedAt DateTime?
   deletedAt        DateTime?
   createdAt        DateTime @default(now())

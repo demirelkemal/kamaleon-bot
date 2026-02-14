@@ -56,7 +56,9 @@ export async function apiCancelSubscription(telegramId: string): Promise<{ statu
   return response.data;
 }
 
-export async function apiGetVpnConfig(telegramId: string): Promise<{ status: 'ready' | 'not_provisioned'; vlessUri: string | null; qrCodeDataUrl?: string }> {
+export async function apiGetVpnConfig(
+  telegramId: string
+): Promise<{ status: 'ready' | 'not_provisioned'; vlessUri: string | null; subscriptionUrl: string | null; qrCodeDataUrl?: string }> {
   const response = await http.get('/api/vpn/config', { params: { telegramId } });
   return response.data;
 }

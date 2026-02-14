@@ -37,6 +37,7 @@ export type SubscriptionView = {
 export type VpnConfigView = {
   status: 'ready' | 'not_provisioned';
   vlessUri: string | null;
+  subscriptionUrl: string | null;
 };
 
 export type CoreRepository = {
@@ -241,10 +242,10 @@ export const prismaCoreRepository: CoreRepository = {
     });
 
     if (!user || user.subscriptions.length === 0 || !user.vpnAccount || user.vpnAccount.deletedAt || !user.vpnAccount.vlessUri) {
-      return { status: 'not_provisioned', vlessUri: null };
+      return { status: 'not_provisioned', vlessUri: null, subscriptionUrl: null };
     }
 
-    return { status: 'ready', vlessUri: user.vpnAccount.vlessUri };
+    return { status: 'ready', vlessUri: user.vpnAccount.vlessUri, subscriptionUrl: user.vpnAccount.subscriptionUrl };
   },
 
   async setOrderProviderPaymentId(orderId: string, providerPaymentId: string) {

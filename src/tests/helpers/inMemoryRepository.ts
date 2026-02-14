@@ -118,9 +118,13 @@ export function createInMemoryRepository(): CoreRepository {
     async getVpnConfig(telegramId: bigint): Promise<VpnConfigView> {
       const sub = await this.getSubscriptionByTelegramId(telegramId);
       if (sub.status !== 'active') {
-        return { status: 'not_provisioned', vlessUri: null };
+        return { status: 'not_provisioned', vlessUri: null, subscriptionUrl: null };
       }
-      return { status: 'ready', vlessUri: 'vless://stub@example.com:443?security=reality#stub' };
+      return {
+        status: 'ready',
+        vlessUri: 'vless://stub@example.com:443?security=reality#stub',
+        subscriptionUrl: 'https://example.com/subscription?name=stub'
+      };
     },
 
     async setOrderProviderPaymentId(orderId: string, providerPaymentId: string) {

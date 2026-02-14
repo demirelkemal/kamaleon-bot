@@ -4,7 +4,13 @@ import { config } from '../config';
 export type XuiClientInput = {
   clientId: string;
   email: string;
+  subId: string;
   expiresAt: Date;
+};
+
+type XuiInboundClient = {
+  id?: string;
+  email?: string;
 };
 
 function buildPath(path: string): string {
@@ -120,6 +126,49 @@ export class XuiService {
     };
   }
 
+  private async fetchInboundClients(): Promise<XuiInboundClient[]> {
+    const paths = [buildPath(`/api/inbounds/get/${config.threeXUiInboundId}`), buildPath(`/inbound/get/${config.threeXUiInboundId}`)];
+
+    for (const path of paths) {
+      try {
+        const response = await this.http.get(path, { headers: { Cookie: this.sessionCookie } });
+        ensureXuiSuccess(response, 'getInbound');
+
+        const payload = response.data as { obj?: { settings?: string | { clients?: unknown } } } | undefined;
+        const settingsRaw = payload?.obj?.settings;
+        let clientsRaw: unknown = [];
+
+        if (typeof settingsRaw === 'string') {
+          try {
+            clientsRaw = (JSON.parse(settingsRaw) as { clients?: unknown }).clients ?? [];
+          } catch {
+            clientsRaw = [];
+          }
+        } else if (settingsRaw && typeof settingsRaw === 'object') {
+          clientsRaw = (settingsRaw as { clients?: unknown }).clients ?? [];
+        }
+
+        if (!Array.isArray(clientsRaw)) {
+          return [];
+        }
+
+        return clientsRaw
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => item as XuiInboundClient);
+      } catch {
+        continue;
+      }
+    }
+
+    return [];
+  }
+
+  private async findClientIdByEmail(email: string): Promise<string | null> {
+    const clients = await this.fetchInboundClients();
+    const existing = clients.find((client) => client.email === email && typeof client.id === 'string' && client.id.length > 0);
+    return existing?.id ?? null;
+  }
+
   public async upsertClient(input: XuiClientInput): Promise<void> {
     await this.withAuth(async () => {
       await this.deleteClient(input.clientId).catch(() => undefined);
@@ -133,7 +182,7 @@ export class XuiService {
         expiryTime: input.expiresAt.getTime(),
         enable: true,
         tgId: '',
-        subId: ''
+        subId: input.subId
       };
 
       const form = new URLSearchParams();
@@ -152,7 +201,20 @@ export class XuiService {
           });
           ensureXuiSuccess(response, 'addClient');
         } catch (error) {
-          throw new Error(`3x-ui addClient failed: ${formatAxiosError(error)}`);
+          const message = formatAxiosError(error);
+          if (message.includes('Duplicate email')) {
+            const existingClientId = await this.findClientIdByEmail(input.email);
+            if (existingClientId) {
+              await this.deleteClient(existingClientId);
+              const retry = await this.http.post(buildPath('/inbound/addClient'), form, {
+                headers: this.headers()
+              });
+              ensureXuiSuccess(retry, 'addClient');
+              return;
+            }
+          }
+
+          throw new Error(`3x-ui addClient failed: ${message}`);
         }
       }
     });
