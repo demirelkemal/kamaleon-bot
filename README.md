@@ -153,3 +153,11 @@ curl -X POST "http://127.0.0.1/api/admin/provision?telegramId=291249764" \
 - репозиторий уже склонирован в `DEPLOY_PATH`;
 - в рабочей папке настроен `.env` со всеми runtime-переменными;
 - пользователь имеет права на чтение/запись в `DEPLOY_PATH`.
+
+## 9. Deploy Smoke Check
+
+После автодеплоя проверьте:
+
+```bash
+curl -fsS http://127.0.0.1/health
+```
