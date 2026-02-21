@@ -130,3 +130,28 @@ curl -X POST "http://127.0.0.1:3000/api/admin/provision?telegramId=291249764" \
 См. `SECURITY_AUDIT.md`.
 # kamaleon-bot
 # kamaleon-bot
+
+## 8. GitHub Actions деплой
+
+Добавлен workflow `.github/workflows/deploy.yml`:
+- запускается на `push` в `main` и вручную через `workflow_dispatch`;
+- выполняет `npm ci`, `npm run build`, `npm test`;
+- при успехе деплоит на сервер по SSH, делает `git pull`, `npm ci`, `npx prisma migrate deploy`, `npm run build`, перезапускает `pm2` процесс `kamaleon-bot`.
+
+### GitHub Secrets, которые нужно создать
+
+Обязательные:
+- `DEPLOY_HOST` — IP/домен сервера.
+- `DEPLOY_USER` — SSH-пользователь.
+- `DEPLOY_SSH_KEY` — приватный SSH-ключ (лучше отдельный deploy key).
+- `DEPLOY_PATH` — абсолютный путь до репозитория на сервере.
+
+Опционально:
+- `DEPLOY_PORT` — SSH-порт (по умолчанию `22`).
+
+### Что должно быть подготовлено на сервере
+- установлен Node.js 22+;
+- установлен `pm2`;
+- репозиторий уже склонирован в `DEPLOY_PATH`;
+- в рабочей папке настроен `.env` со всеми runtime-переменными;
+- пользователь имеет права на чтение/запись в `DEPLOY_PATH`.
