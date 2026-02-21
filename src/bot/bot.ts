@@ -4,6 +4,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import {
   apiCancelSubscription,
+  apiCreateProfileLink,
   apiCreateOrder,
   formatBackendError,
   apiGetPlans,
@@ -11,6 +12,18 @@ import {
   apiGetVpnConfig,
   apiRenewSubscription
 } from './backendClient';
+
+type BotPlan = {
+  id: string;
+  name: string;
+  priceCents: number;
+};
+
+const fallbackPlans: BotPlan[] = [
+  { id: 'plan-7', name: '7 days', priceCents: 9900 },
+  { id: 'plan-30', name: '30 days', priceCents: 29900 },
+  { id: 'plan-90', name: '90 days', priceCents: 79900 }
+];
 
 function rub(cents: number): string {
   return `${(cents / 100).toFixed(2)} RUB`;
@@ -31,10 +44,18 @@ function profileKeyboard(): InlineKeyboard {
 }
 
 async function sendPlans(chatId: number, bot: Bot): Promise<void> {
-  const plans = await apiGetPlans();
+  let plans: BotPlan[] = [];
+  try {
+    const loadedPlans = await apiGetPlans();
+    plans = loadedPlans;
+  } catch (error) {
+    const details = formatBackendError(error);
+    logger.error({ error, details }, 'Failed to load plans, using fallback plans');
+    plans = fallbackPlans;
+  }
+
   if (plans.length === 0) {
-    await bot.api.sendMessage(chatId, 'Тарифы пока недоступны.');
-    return;
+    plans = fallbackPlans;
   }
 
   const keyboard = new InlineKeyboard();
@@ -42,7 +63,9 @@ async function sendPlans(chatId: number, bot: Bot): Promise<void> {
     keyboard.text(`${plan.name} • ${rub(plan.priceCents)}`, `plan:${plan.id}`).row();
   }
 
-  await bot.api.sendMessage(chatId, 'Выберите тариф:', { reply_markup: keyboard });
+  await bot.api.sendMessage(chatId, 'Выберите тариф:', {
+    reply_markup: keyboard
+  });
 }
 
 async function sendProfile(chatId: number, telegramId: string, bot: Bot): Promise<void> {
@@ -67,6 +90,21 @@ async function sendProfile(chatId: number, telegramId: string, bot: Bot): Promis
     ].join('\n'),
     { reply_markup: profileKeyboard() }
   );
+}
+
+async function openMenu(chatId: number, telegramId: string, bot: Bot): Promise<void> {
+  try {
+    const subscription = await apiGetSubscription(telegramId);
+    if (subscription.status === 'active') {
+      await sendProfile(chatId, telegramId, bot);
+      return;
+    }
+  } catch (error) {
+    const details = formatBackendError(error);
+    logger.error({ error, details, telegramId }, 'Failed to fetch subscription while opening menu, fallback to plans');
+  }
+
+  await sendPlans(chatId, bot);
 }
 
 function instructionsText(vlessUri: string, subscriptionUrl: string | null): string {
@@ -101,6 +139,26 @@ function isTelegramButtonUrlAllowed(value: string): boolean {
   }
 }
 
+async function sendWebProfileLink(chatId: number, telegramId: string, bot: Bot): Promise<void> {
+  const link = await apiCreateProfileLink(telegramId);
+  if (isTelegramButtonUrlAllowed(link.url)) {
+    await bot.api.sendMessage(chatId, 'Откройте профиль в браузере:', {
+      reply_markup: new InlineKeyboard().url('Открыть профиль', link.url)
+    });
+    return;
+  }
+
+  await bot.api.sendMessage(
+    chatId,
+    [
+      'Открыть профиль:',
+      link.url,
+      '',
+      'URL-кнопка недоступна для localhost. Задайте публичный APP_BASE_URL/BACKEND_API_BASE_URL.'
+    ].join('\n')
+  );
+}
+
 export function createTelegramBot(): Bot | null {
   if (!config.botToken) {
     logger.warn('BOT_TOKEN is empty, Telegram bot is disabled');
@@ -120,35 +178,58 @@ export function createTelegramBot(): Bot | null {
     if (!ctx.chat || !ctx.from) return;
     await ctx.reply(
       'Добро пожаловать в Kamaleon VPN.\nНажмите «Старт», чтобы открыть меню.',
-      { reply_markup: new InlineKeyboard().text('Старт', 'menu:start') }
+      {
+        reply_markup: new InlineKeyboard()
+          .text('Старт', 'menu:start')
+          .row()
+          .text('Профиль', 'menu:profile')
+      }
     );
   });
 
   bot.command('profile', async (ctx) => {
-    if (!ctx.chat || !ctx.from) return;
-    const telegramId = String(ctx.from.id);
-    const subscription = await apiGetSubscription(telegramId);
-
-    if (subscription.status === 'active') {
-      await sendProfile(ctx.chat.id, telegramId, bot);
-      return;
+    try {
+      if (!ctx.chat || !ctx.from) return;
+      const telegramId = String(ctx.from.id);
+      await sendWebProfileLink(ctx.chat.id, telegramId, bot);
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to handle /profile');
+      await ctx.reply(`Не удалось открыть профиль: ${details}`);
     }
-
-    await sendPlans(ctx.chat.id, bot);
   });
 
   bot.callbackQuery('menu:start', async (ctx) => {
-    if (!ctx.chat || !ctx.from) return;
-    const telegramId = String(ctx.from.id);
-    const subscription = await apiGetSubscription(telegramId);
-    await ctx.answerCallbackQuery();
+    try {
+      if (!ctx.chat || !ctx.from) return;
+      await ctx.answerCallbackQuery();
 
-    if (subscription.status === 'active') {
-      await sendProfile(ctx.chat.id, telegramId, bot);
-      return;
+      const telegramId = String(ctx.from.id);
+      await openMenu(ctx.chat.id, telegramId, bot);
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to handle start menu callback');
+      await ctx.answerCallbackQuery({ text: 'Ошибка загрузки меню' }).catch(() => undefined);
+      if (ctx.chat) {
+        await ctx.reply('Сейчас не удалось открыть меню. Попробуйте еще раз чуть позже.');
+      }
     }
+  });
 
-    await sendPlans(ctx.chat.id, bot);
+  bot.callbackQuery('menu:profile', async (ctx) => {
+    try {
+      if (!ctx.chat || !ctx.from) return;
+      await ctx.answerCallbackQuery();
+      const telegramId = String(ctx.from.id);
+      await sendWebProfileLink(ctx.chat.id, telegramId, bot);
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to handle profile link callback');
+      await ctx.answerCallbackQuery({ text: 'Ошибка открытия профиля' }).catch(() => undefined);
+      if (ctx.chat) {
+        await ctx.reply(`Не удалось открыть профиль: ${details}`);
+      }
+    }
   });
 
   bot.callbackQuery(/^plan:(.+)$/, async (ctx) => {
@@ -235,33 +316,47 @@ export function createTelegramBot(): Bot | null {
   });
 
   bot.callbackQuery('cancel:yes', async (ctx) => {
-    if (!ctx.from) return;
-    const telegramId = String(ctx.from.id);
-    await apiCancelSubscription(telegramId);
-    await ctx.answerCallbackQuery();
-    await ctx.reply('Подписка остановлена (status=blocked). Для возобновления выберите тариф и оплатите его заново.');
+    try {
+      if (!ctx.from) return;
+      const telegramId = String(ctx.from.id);
+      await apiCancelSubscription(telegramId);
+      await ctx.answerCallbackQuery();
+      await ctx.reply('Подписка остановлена (status=blocked). Для возобновления выберите тариф и оплатите его заново.');
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to cancel subscription');
+      await ctx.answerCallbackQuery({ text: 'Ошибка отмены' }).catch(() => undefined);
+      await ctx.reply(`Не удалось остановить подписку: ${details}`);
+    }
   });
 
   bot.callbackQuery('profile:qr', async (ctx) => {
-    if (!ctx.from) return;
-    const telegramId = String(ctx.from.id);
-    const vpnConfig = await apiGetVpnConfig(telegramId);
+    try {
+      if (!ctx.from) return;
+      const telegramId = String(ctx.from.id);
+      const vpnConfig = await apiGetVpnConfig(telegramId);
 
-    await ctx.answerCallbackQuery();
+      await ctx.answerCallbackQuery();
 
-    if (vpnConfig.status !== 'ready' || !vpnConfig.vlessUri || vpnConfig.vlessUri === 'not provisioned') {
-      await ctx.reply('Конфиг пока не готов. Если вы только что оплатили, подождите 5-10 секунд и нажмите кнопку еще раз.');
-      return;
+      if (vpnConfig.status !== 'ready' || !vpnConfig.vlessUri || vpnConfig.vlessUri === 'not provisioned') {
+        await ctx.reply('Конфиг пока не готов. Если вы только что оплатили, подождите 5-10 секунд и нажмите кнопку еще раз.');
+        return;
+      }
+
+      const qr = vpnConfig.qrCodeDataUrl
+        ? Buffer.from(vpnConfig.qrCodeDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64')
+        : await QRCode.toBuffer(vpnConfig.vlessUri, { width: 512, type: 'png' });
+
+      await ctx.replyWithPhoto(new InputFile(qr, 'vpn.png'), {
+        caption: instructionsText(vpnConfig.vlessUri, vpnConfig.subscriptionUrl)
+      });
+      await ctx.reply(`${vpnConfig.vlessUri}`);
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to fetch VPN config');
+      await ctx.answerCallbackQuery({ text: 'Ошибка получения конфига' }).catch(() => undefined);
+      await ctx.reply(`Не удалось получить конфиг: ${details}`);
     }
-
-    const qr = vpnConfig.qrCodeDataUrl
-      ? Buffer.from(vpnConfig.qrCodeDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64')
-      : await QRCode.toBuffer(vpnConfig.vlessUri, { width: 512, type: 'png' });
-
-    await ctx.replyWithPhoto(new InputFile(qr, 'vpn.png'), {
-      caption: instructionsText(vpnConfig.vlessUri, vpnConfig.subscriptionUrl)
-    });
-    await ctx.reply(`${vpnConfig.vlessUri}`);
   });
 
   bot.catch((error) => {

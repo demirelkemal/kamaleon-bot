@@ -158,10 +158,12 @@ export async function cancelAndDeleteUser(telegramId: bigint): Promise<{ status:
     });
   }
 
-  const latestSubscription = user.subscriptions[0];
   await prisma.$transaction(async (tx) => {
-    await tx.subscription.update({
-      where: { id: latestSubscription.id },
+    await tx.subscription.updateMany({
+      where: {
+        userId: user.id,
+        status: SubscriptionStatus.ACTIVE
+      },
       data: {
         status: SubscriptionStatus.BLOCKED,
         needsProvisioning: false

@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { HttpError } from '../api/errors';
 import type { CoreRepository } from '../repositories/coreRepository';
 import { CoreApiService } from '../services/coreApiService';
+import { ProfileWebService } from '../services/profileWebService';
+import { verifyBearerToken } from '../security/auth';
+import { config } from '../config';
 
 const telegramBodySchema = z.object({
   telegramId: z.coerce.bigint()
@@ -25,6 +28,10 @@ const cancelSchema = z.object({
   telegramId: z.coerce.bigint()
 });
 
+const profileLinkSchema = z.object({
+  telegramId: z.coerce.bigint()
+});
+
 const fakepayPaymentSchema = z.object({
   orderId: z.string().min(1)
 });
@@ -32,6 +39,7 @@ const fakepayPaymentSchema = z.object({
 export function createApiController(repository: CoreRepository): Router {
   const router = Router();
   const service = new CoreApiService(repository);
+  const profileWebService = new ProfileWebService();
 
   router.get('/plans', async (_req, res, next) => {
     try {
@@ -120,6 +128,28 @@ export function createApiController(repository: CoreRepository): Router {
         throw new HttpError(404, 'Order not found');
       }
       res.status(200).json({ order });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/profile/link', async (req, res, next) => {
+    try {
+      const authHeader = req.header('authorization');
+      const source = req.header('x-kamaleon-source');
+      if (!verifyBearerToken(authHeader, config.internalApiToken)) {
+        throw new HttpError(401, 'Unauthorized');
+      }
+      if (source !== config.trustedProfileLinkSource) {
+        throw new HttpError(403, 'Forbidden source');
+      }
+
+      const payload = profileLinkSchema.parse(req.body);
+      const result = await profileWebService.createAccessLink(payload.telegramId);
+      res.status(201).json({
+        url: result.url,
+        expiresAt: result.expiresAt.toISOString()
+      });
     } catch (error) {
       next(error);
     }

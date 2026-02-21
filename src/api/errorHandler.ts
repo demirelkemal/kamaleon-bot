@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { HttpError } from './errors';
 import { logger } from '../logger';
@@ -26,6 +27,15 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     res.status(err.statusCode).json({
       error: 'http_error',
       message: err.message
+    });
+    return;
+  }
+
+  if (err instanceof Prisma.PrismaClientInitializationError) {
+    logger.error({ err, requestId: req.requestId }, 'Database initialization error');
+    res.status(503).json({
+      error: 'database_unavailable',
+      message: 'Database is unavailable'
     });
     return;
   }

@@ -37,16 +37,26 @@ export type VpnConfigView = {
   subscriptionUrl: string | null;
 };
 
+export type CancelSubscriptionResult = {
+  status: 'blocked' | 'expired';
+};
+
+export type ApplyWebhookEventResult = {
+  idempotent: boolean;
+  orderId: string;
+  status: 'succeeded' | 'failed';
+};
+
 export type CoreRepository = {
   getActivePlans: () => Promise<PlanDto[]>;
   upsertTelegramUser: (telegramId: bigint) => Promise<UserDto>;
   getSubscriptionByTelegramId: (telegramId: bigint) => Promise<SubscriptionView>;
   createPendingOrder: (telegramId: bigint, planId: string) => Promise<{ orderId: string; amountCents: number; currency: string }>;
   createRenewOrder: (telegramId: bigint) => Promise<{ orderId: string; amountCents: number; currency: string }>;
-  cancelSubscription: (telegramId: bigint) => Promise<{ status: 'blocked' | 'expired' }>;
+  cancelSubscription: (telegramId: bigint) => Promise<CancelSubscriptionResult>;
   getVpnConfig: (telegramId: bigint) => Promise<VpnConfigView>;
   setOrderProviderPaymentId: (orderId: string, providerPaymentId: string) => Promise<void>;
   getOrderById: (orderId: string) => Promise<OrderDto | null>;
   getOrderByProviderPaymentId: (providerPaymentId: string) => Promise<OrderDto | null>;
-  applyWebhookEvent: (payload: FakepayWebhookPayload, rawPayload: string) => Promise<{ idempotent: boolean; orderId: string; status: 'succeeded' | 'failed' }>;
+  applyWebhookEvent: (payload: FakepayWebhookPayload, rawPayload: string) => Promise<ApplyWebhookEventResult>;
 };

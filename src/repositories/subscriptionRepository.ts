@@ -1,6 +1,7 @@
 import { SubscriptionStatus } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { CoreRepository } from './types';
+import type { CancelSubscriptionResult } from './types';
 import { calculateDaysLeft } from './utils';
 
 export type SubscriptionRepository = Pick<CoreRepository, 'getSubscriptionByTelegramId' | 'cancelSubscription' | 'getVpnConfig'>;
@@ -54,8 +55,8 @@ export function createSubscriptionRepository(prisma: PrismaClient): Subscription
       };
     },
 
-    async cancelSubscription(telegramId: bigint) {
-      return prisma.$transaction(async (tx) => {
+    async cancelSubscription(telegramId: bigint): Promise<CancelSubscriptionResult> {
+      return prisma.$transaction<CancelSubscriptionResult>(async (tx) => {
         const user = await tx.user.upsert({
           where: { telegramId },
           update: {},
@@ -69,7 +70,7 @@ export function createSubscriptionRepository(prisma: PrismaClient): Subscription
         });
 
         if (!subscription) {
-          return { status: 'expired' as const };
+          return { status: 'expired' };
         }
 
         await tx.subscription.update({
@@ -77,7 +78,7 @@ export function createSubscriptionRepository(prisma: PrismaClient): Subscription
           data: { status: 'BLOCKED', needsProvisioning: false }
         });
 
-        return { status: 'blocked' as const };
+        return { status: 'blocked' };
       });
     },
 

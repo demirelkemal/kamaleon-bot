@@ -21,11 +21,32 @@ const http = axios.create({
   timeout: 15000
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function extractErrorMessage(data: unknown): string | null {
+  if (!isRecord(data)) {
+    return null;
+  }
+
+  const maybeMessage = data.message;
+  if (typeof maybeMessage === 'string' && maybeMessage.length > 0) {
+    return maybeMessage;
+  }
+
+  const maybeError = data.error;
+  if (typeof maybeError === 'string' && maybeError.length > 0) {
+    return maybeError;
+  }
+
+  return null;
+}
+
 export function formatBackendError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
-    const data = error.response?.data as { message?: string; error?: string } | undefined;
-    const message = data?.message ?? data?.error ?? error.message;
+    const message = extractErrorMessage(error.response?.data) ?? error.message;
     return status ? `HTTP ${status}: ${message}` : message;
   }
   return error instanceof Error ? error.message : 'Unknown error';
@@ -60,5 +81,15 @@ export async function apiGetVpnConfig(
   telegramId: string
 ): Promise<{ status: 'ready' | 'not_provisioned'; vlessUri: string | null; subscriptionUrl: string | null; qrCodeDataUrl?: string }> {
   const response = await http.get('/api/vpn/config', { params: { telegramId } });
+  return response.data;
+}
+
+export async function apiCreateProfileLink(telegramId: string): Promise<{ url: string; expiresAt: string }> {
+  const response = await http.post('/api/profile/link', { telegramId }, {
+    headers: {
+      authorization: `Bearer ${config.internalApiToken}`,
+      'x-kamaleon-source': config.trustedProfileLinkSource
+    }
+  });
   return response.data;
 }

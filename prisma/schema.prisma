@@ -46,6 +46,8 @@ model User {
   orders        Order[]
   subscriptions Subscription[]
   vpnAccount    VpnAccount?
+  profileAccessTokens ProfileAccessToken[]
+  profileWebSessions  ProfileWebSession[]
 }
 
 model Subscription {
@@ -109,4 +111,30 @@ model PaymentEvent {
   order             Order         @relation(fields: [orderId], references: [id])
 
   @@index([orderId])
+}
+
+model ProfileAccessToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  telegramId BigInt
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+  user       User     @relation(fields: [telegramId], references: [telegramId])
+
+  @@index([telegramId, createdAt])
+  @@index([expiresAt])
+}
+
+model ProfileWebSession {
+  id         String   @id @default(cuid())
+  sessionKey String   @unique
+  telegramId BigInt
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime?
+  user       User     @relation(fields: [telegramId], references: [telegramId])
+
+  @@index([telegramId, createdAt])
+  @@index([expiresAt])
 }

@@ -22,6 +22,31 @@ function normalizePath(value: string): string {
   return `/${trimmed.replace(/^\/+/, '').replace(/\/+$/, '')}`;
 }
 
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false;
+  return fallback;
+}
+
+function parseCookieSecureMode(value: string | undefined): 'auto' | 'always' | 'never' {
+  if (!value) return 'auto';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'always' || normalized === 'never' || normalized === 'auto') {
+    return normalized;
+  }
+  return 'auto';
+}
+
+function parsePositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? '3000'),
   databaseUrl: getRequired('DATABASE_URL'),
@@ -29,7 +54,13 @@ export const config = {
   backendApiBaseUrl: normalizeBaseUrl(process.env.BACKEND_API_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`),
   fakepayWebhookSecret: getRequired('FAKEPAY_WEBHOOK_SECRET'),
   adminToken: getRequired('ADMIN_TOKEN'),
+  internalApiToken: process.env.INTERNAL_API_TOKEN ?? getRequired('ADMIN_TOKEN'),
+  trustedProfileLinkSource: process.env.TRUSTED_PROFILE_LINK_SOURCE ?? 'telegram-bot',
+  trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
+  profileCookieSecure: parseCookieSecureMode(process.env.PROFILE_COOKIE_SECURE),
+  profileCleanupIntervalMs: parsePositiveNumber(process.env.PROFILE_CLEANUP_INTERVAL_MS, 15 * 60 * 1000),
   botToken: process.env.BOT_TOKEN ?? '',
+  botUsername: process.env.BOT_USERNAME ?? '',
   threeXUiBaseUrl: process.env.THREEXUI_BASE_URL ? normalizeBaseUrl(process.env.THREEXUI_BASE_URL) : '',
   threeXUiWebBasePath: normalizePath(process.env.THREEXUI_WEBBASEPATH ?? '/panel'),
   threeXUiUsername: process.env.THREEXUI_USERNAME ?? '',

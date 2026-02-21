@@ -6,6 +6,22 @@ import { createInMemoryRepository } from './helpers/inMemoryRepository';
 import { signFakepayPayload } from '../fakepay/signature';
 import { config } from '../config';
 
+function expectString(value: unknown, name: string): string {
+  expect(typeof value).toBe('string');
+  if (typeof value !== 'string') {
+    throw new Error(`${name} must be a string`);
+  }
+  return value;
+}
+
+function expectNumber(value: unknown, name: string): number {
+  expect(typeof value).toBe('number');
+  if (typeof value !== 'number') {
+    throw new Error(`${name} must be a number`);
+  }
+  return value;
+}
+
 describe('FakePay webhook', () => {
   it('returns 401 for invalid signature', async () => {
     const app = createApp(createInMemoryRepository());
@@ -36,7 +52,7 @@ describe('FakePay webhook', () => {
       .send({ telegramId: '123', planId: 'plan-30' });
 
     expect(createOrderResponse.status).toBe(201);
-    const orderId = createOrderResponse.body.orderId as string;
+    const orderId = expectString(createOrderResponse.body.orderId, 'orderId');
 
     const orderResponse = await request(app).get(`/api/orders/${orderId}`);
     expect(orderResponse.status).toBe(200);
@@ -44,10 +60,10 @@ describe('FakePay webhook', () => {
     const eventId = randomUUID();
     const payload = {
       eventId,
-      providerPaymentId: orderResponse.body.order.providerPaymentId as string,
+      providerPaymentId: expectString(orderResponse.body.order.providerPaymentId, 'providerPaymentId'),
       status: 'succeeded',
-      amount: orderResponse.body.order.amountCents as number,
-      currency: orderResponse.body.order.currency as string,
+      amount: expectNumber(orderResponse.body.order.amountCents, 'amountCents'),
+      currency: expectString(orderResponse.body.order.currency, 'currency'),
       metadata: { orderId }
     };
 

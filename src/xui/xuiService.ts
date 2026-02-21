@@ -13,6 +13,21 @@ type XuiInboundClient = {
   email?: string;
 };
 
+type XuiActionResponse = {
+  success?: boolean;
+  msg?: string;
+};
+
+type XuiInboundResponse = {
+  obj?: {
+    settings?: string | { clients?: unknown };
+  };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function buildPath(path: string): string {
   return `${config.threeXUiWebBasePath}${path}`;
 }
@@ -35,10 +50,82 @@ function formatAxiosError(error: unknown): string {
 }
 
 function ensureXuiSuccess(response: { data?: unknown }, action: string): void {
-  const payload = response.data as { success?: boolean; msg?: string } | undefined;
+  const payload = parseXuiActionResponse(response.data);
   if (payload && typeof payload.success === 'boolean' && !payload.success) {
     throw new Error(`${action} failed: ${payload.msg ?? 'unknown reason'}`);
   }
+}
+
+function parseXuiActionResponse(data: unknown): XuiActionResponse | undefined {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+
+  const payload: XuiActionResponse = {};
+  if ('success' in data && typeof data.success === 'boolean') {
+    payload.success = data.success;
+  }
+  if ('msg' in data && typeof data.msg === 'string') {
+    payload.msg = data.msg;
+  }
+
+  return payload;
+}
+
+function getAxiosStatus(error: unknown): number | undefined {
+  if (!axios.isAxiosError(error)) {
+    return undefined;
+  }
+  return error.response?.status;
+}
+
+function parseInboundResponse(data: unknown): XuiInboundResponse | undefined {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+
+  const objValue = data.obj;
+  if (!isRecord(objValue)) {
+    return undefined;
+  }
+
+  const responseObj: NonNullable<XuiInboundResponse['obj']> = {};
+  if ('settings' in objValue && (typeof objValue.settings === 'string' || isRecord(objValue.settings))) {
+    responseObj.settings = objValue.settings;
+  }
+  return { obj: responseObj };
+}
+
+function extractClientsFromSettings(settings: string | { clients?: unknown }): unknown[] {
+  if (typeof settings === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(settings);
+      if (!isRecord(parsed) || !('clients' in parsed)) {
+        return [];
+      }
+      return Array.isArray(parsed.clients) ? parsed.clients : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return Array.isArray(settings.clients) ? settings.clients : [];
+}
+
+function toInboundClient(value: unknown): XuiInboundClient | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const client: XuiInboundClient = {};
+  if ('id' in value && typeof value.id === 'string') {
+    client.id = value.id;
+  }
+  if ('email' in value && typeof value.email === 'string') {
+    client.email = value.email;
+  }
+
+  return client;
 }
 
 export class XuiService {
@@ -110,7 +197,7 @@ export class XuiService {
     try {
       return await fn();
     } catch (error) {
-      const status = (error as { response?: { status?: number } }).response?.status;
+      const status = getAxiosStatus(error);
       if (status === 401 || status === 403) {
         await this.login();
         return fn();
@@ -134,27 +221,16 @@ export class XuiService {
         const response = await this.http.get(path, { headers: { Cookie: this.sessionCookie } });
         ensureXuiSuccess(response, 'getInbound');
 
-        const payload = response.data as { obj?: { settings?: string | { clients?: unknown } } } | undefined;
-        const settingsRaw = payload?.obj?.settings;
-        let clientsRaw: unknown = [];
-
-        if (typeof settingsRaw === 'string') {
-          try {
-            clientsRaw = (JSON.parse(settingsRaw) as { clients?: unknown }).clients ?? [];
-          } catch {
-            clientsRaw = [];
-          }
-        } else if (settingsRaw && typeof settingsRaw === 'object') {
-          clientsRaw = (settingsRaw as { clients?: unknown }).clients ?? [];
-        }
-
-        if (!Array.isArray(clientsRaw)) {
+        const payload = parseInboundResponse(response.data);
+        const settings = payload?.obj?.settings;
+        if (!settings) {
           return [];
         }
 
+        const clientsRaw = extractClientsFromSettings(settings);
         return clientsRaw
-          .filter((item) => item && typeof item === 'object')
-          .map((item) => item as XuiInboundClient);
+          .map(toInboundClient)
+          .filter((item): item is XuiInboundClient => item !== null);
       } catch {
         continue;
       }

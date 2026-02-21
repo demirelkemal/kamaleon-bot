@@ -1,4 +1,13 @@
-import type { CoreRepository, OrderDto, PlanDto, SubscriptionView, UserDto, VpnConfigView } from '../../repositories/coreRepository';
+import type {
+  ApplyWebhookEventResult,
+  CancelSubscriptionResult,
+  CoreRepository,
+  OrderDto,
+  PlanDto,
+  SubscriptionView,
+  UserDto,
+  VpnConfigView
+} from '../../repositories/coreRepository';
 import type { FakepayWebhookPayload } from '../../fakepay/types';
 
 type InMemoryState = {
@@ -106,13 +115,13 @@ export function createInMemoryRepository(): CoreRepository {
       return this.createPendingOrder(telegramId, sub.planId);
     },
 
-    async cancelSubscription(telegramId: bigint) {
+    async cancelSubscription(telegramId: bigint): Promise<CancelSubscriptionResult> {
       const sub = state.subscriptionsByTelegram.get(telegramId);
       if (!sub) {
-        return { status: 'expired' as const };
+        return { status: 'expired' };
       }
       state.subscriptionsByTelegram.set(telegramId, { ...sub, status: 'blocked' });
-      return { status: 'blocked' as const };
+      return { status: 'blocked' };
     },
 
     async getVpnConfig(telegramId: bigint): Promise<VpnConfigView> {
@@ -144,7 +153,7 @@ export function createInMemoryRepository(): CoreRepository {
       return state.orders.get(orderId) ?? null;
     },
 
-    async applyWebhookEvent(payload: FakepayWebhookPayload) {
+    async applyWebhookEvent(payload: FakepayWebhookPayload): Promise<ApplyWebhookEventResult> {
       if (state.processedEvents.has(payload.eventId)) {
         return { idempotent: true, orderId: payload.metadata.orderId, status: payload.status };
       }
@@ -157,7 +166,7 @@ export function createInMemoryRepository(): CoreRepository {
 
       if (payload.status === 'failed') {
         order.status = 'failed';
-        return { idempotent: false, orderId: order.id, status: 'failed' as const };
+        return { idempotent: false, orderId: order.id, status: 'failed' };
       }
 
       order.status = 'paid';
@@ -175,13 +184,13 @@ export function createInMemoryRepository(): CoreRepository {
         const extended = new Date(existing.expiresAt);
         extended.setUTCDate(extended.getUTCDate() + planDays);
         state.subscriptionsByTelegram.set(telegramId, { status: 'active', expiresAt: extended, planId: order.planId });
-        return { idempotent: false, orderId: order.id, status: 'succeeded' as const };
+        return { idempotent: false, orderId: order.id, status: 'succeeded' };
       }
 
       const expiresAt = new Date(now);
       expiresAt.setUTCDate(expiresAt.getUTCDate() + planDays);
       state.subscriptionsByTelegram.set(telegramId, { status: 'active', expiresAt, planId: order.planId });
-      return { idempotent: false, orderId: order.id, status: 'succeeded' as const };
+      return { idempotent: false, orderId: order.id, status: 'succeeded' };
     }
   };
 }

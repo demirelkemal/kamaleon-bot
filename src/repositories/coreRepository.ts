@@ -6,7 +6,16 @@ import { createUserRepository } from './userRepository';
 import { createWebhookRepository } from './webhookRepository';
 import type { CoreRepository } from './types';
 
-export type { CoreRepository, OrderDto, PlanDto, SubscriptionView, UserDto, VpnConfigView } from './types';
+export type {
+  ApplyWebhookEventResult,
+  CancelSubscriptionResult,
+  CoreRepository,
+  OrderDto,
+  PlanDto,
+  SubscriptionView,
+  UserDto,
+  VpnConfigView
+} from './types';
 
 const planRepository = createPlanRepository(prisma);
 const userRepository = createUserRepository(prisma);

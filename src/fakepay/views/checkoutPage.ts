@@ -3,9 +3,12 @@ type CheckoutPageInput = {
   providerPaymentId: string;
   amountCents: number;
   currency: string;
+  returnTo: string | null;
 };
 
 export function renderFakepayCheckoutPage(input: CheckoutPageInput): string {
+  const returnToQuery = input.returnTo ? `&returnTo=${encodeURIComponent(input.returnTo)}` : '';
+
   return `<!doctype html>
 <html lang="ru">
   <head>
@@ -23,11 +26,11 @@ export function renderFakepayCheckoutPage(input: CheckoutPageInput): string {
       <p style="margin:4px 0;"><strong>Сумма:</strong> ${(input.amountCents / 100).toFixed(2)} ${input.currency}</p>
     </div>
 
-    <form method="POST" action="/fakepay/complete/${input.providerPaymentId}?result=succeeded" style="margin-bottom:12px;">
+    <form method="POST" action="/fakepay/complete/${input.providerPaymentId}?result=succeeded${returnToQuery}" style="margin-bottom:12px;">
       <button type="submit" style="padding:10px 16px;border-radius:8px;border:0;background:#1f883d;color:#fff;cursor:pointer;">Оплатить успешно</button>
     </form>
 
-    <form method="POST" action="/fakepay/complete/${input.providerPaymentId}?result=failed">
+    <form method="POST" action="/fakepay/complete/${input.providerPaymentId}?result=failed${returnToQuery}">
       <button type="submit" style="padding:10px 16px;border-radius:8px;border:0;background:#cf222e;color:#fff;cursor:pointer;">Завершить с ошибкой</button>
     </form>
 

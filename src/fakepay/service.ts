@@ -3,6 +3,7 @@ import { config } from '../config';
 
 export type FakepayCreatePaymentInput = {
   orderId: string;
+  returnTo?: string;
 };
 
 export type FakepayCreatePaymentOutput = {
@@ -12,8 +13,12 @@ export type FakepayCreatePaymentOutput = {
 
 export function createFakepayPayment(input: FakepayCreatePaymentInput): FakepayCreatePaymentOutput {
   const providerPaymentId = randomUUID();
+  const params = new URLSearchParams({ orderId: input.orderId });
+  if (input.returnTo) {
+    params.set('returnTo', input.returnTo);
+  }
   return {
     providerPaymentId,
-    confirmationUrl: `${config.appBaseUrl}/fakepay/checkout/${providerPaymentId}?orderId=${encodeURIComponent(input.orderId)}`
+    confirmationUrl: `${config.appBaseUrl}/fakepay/checkout/${providerPaymentId}?${params.toString()}`
   };
 }
