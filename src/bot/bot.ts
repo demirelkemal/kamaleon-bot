@@ -20,9 +20,9 @@ type BotPlan = {
 };
 
 const fallbackPlans: BotPlan[] = [
-  { id: 'plan-7', name: '7 days', priceCents: 9900 },
-  { id: 'plan-30', name: '30 days', priceCents: 29900 },
-  { id: 'plan-90', name: '90 days', priceCents: 79900 }
+  { id: 'plan_7', name: '7 days', priceCents: 9900 },
+  { id: 'plan_30', name: '30 days', priceCents: 29900 },
+  { id: 'plan_90', name: '90 days', priceCents: 79900 }
 ];
 
 function rub(cents: number): string {

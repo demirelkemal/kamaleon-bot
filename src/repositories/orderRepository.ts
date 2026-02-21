@@ -20,7 +20,13 @@ export function createOrderRepository(prisma: PrismaClient): OrderRepository {
             create: { telegramId },
             select: { id: true }
           }),
-          tx.plan.findFirst({ where: { id: planId, isActive: true }, select: { id: true, priceCents: true } })
+          tx.plan.findFirst({
+            where: {
+              isActive: true,
+              OR: [{ id: planId }, { code: planId }]
+            },
+            select: { id: true, priceCents: true }
+          })
         ]);
 
         if (!plan) {

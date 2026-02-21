@@ -88,7 +88,7 @@ export function createInMemoryRepository(): CoreRepository {
 
     async createPendingOrder(telegramId: bigint, planId: string) {
       const user = await this.upsertTelegramUser(telegramId);
-      const plan = state.plans.find((item) => item.id === planId);
+      const plan = state.plans.find((item) => item.id === planId || item.code === planId);
       if (!plan) {
         throw new Error('Plan not found');
       }
