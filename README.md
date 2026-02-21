@@ -19,42 +19,41 @@ cp .env.example .env
 - `VPN_PUBLIC_*`
 
 Примечание: для локального теста оставьте:
-- `APP_BASE_URL=http://localhost:3000`
+- `APP_BASE_URL=http://localhost`
 - `BACKEND_API_BASE_URL=http://127.0.0.1:3000`
 
 ## 2. Запуск
 
 ```bash
-docker compose up -d
-npm i
-npx prisma migrate dev
-npx prisma db seed
-npx prisma generate
-npm run dev
+docker compose up -d --build
 ```
+
+Контейнер `app` при старте выполняет:
+- `npx prisma migrate deploy`
+- запуск сервера `node dist/src/index.js`
 
 Проверка здоровья:
 ```bash
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1/health
 ```
 
 ## 3. Ручной тест API (curl)
 
 ### 3.1 Планы
 ```bash
-curl http://127.0.0.1:3000/api/plans
+curl http://127.0.0.1/api/plans
 ```
 
 ### 3.2 Создать пользователя
 ```bash
-curl -X POST http://127.0.0.1:3000/api/users/telegram \
+curl -X POST http://127.0.0.1/api/users/telegram \
   -H "content-type: application/json" \
   -d '{"telegramId":"291249764"}'
 ```
 
 ### 3.3 Создать заказ
 ```bash
-curl -X POST http://127.0.0.1:3000/api/orders \
+curl -X POST http://127.0.0.1/api/orders \
   -H "content-type: application/json" \
   -d '{"telegramId":"291249764","planId":"<PLAN_ID_ИЗ_/api/plans>"}'
 ```
@@ -68,19 +67,19 @@ curl -X POST http://127.0.0.1:3000/api/orders \
 
 ### 3.5 Проверить заказ
 ```bash
-curl http://127.0.0.1:3000/api/orders/<ORDER_ID>
+curl http://127.0.0.1/api/orders/<ORDER_ID>
 ```
 Ожидается `status: "paid"`.
 
 ### 3.6 Проверить подписку
 ```bash
-curl "http://127.0.0.1:3000/api/subscription?telegramId=291249764"
+curl "http://127.0.0.1/api/subscription?telegramId=291249764"
 ```
 Ожидается `status: "active"`.
 
 ### 3.7 Проверить VPN конфиг и QR
 ```bash
-curl "http://127.0.0.1:3000/api/vpn/config?telegramId=291249764"
+curl "http://127.0.0.1/api/vpn/config?telegramId=291249764"
 ```
 Ожидается:
 - `status: "ready"`
@@ -89,7 +88,7 @@ curl "http://127.0.0.1:3000/api/vpn/config?telegramId=291249764"
 
 ### 3.8 Ручной догон провижининга (если нужно)
 ```bash
-curl -X POST "http://127.0.0.1:3000/api/admin/provision?telegramId=291249764" \
+curl -X POST "http://127.0.0.1/api/admin/provision?telegramId=291249764" \
   -H "Authorization: Bearer <ADMIN_TOKEN>"
 ```
 
@@ -136,7 +135,7 @@ curl -X POST "http://127.0.0.1:3000/api/admin/provision?telegramId=291249764" \
 Добавлен workflow `.github/workflows/deploy.yml`:
 - запускается на `push` в `main` и вручную через `workflow_dispatch`;
 - выполняет `npm ci`, `npm run build`, `npm test`;
-- при успехе деплоит на сервер по SSH, делает `git pull`, `npm ci`, `npx prisma migrate deploy`, `npm run build`, перезапускает `pm2` процесс `kamaleon-bot`.
+- при успехе деплоит на сервер по SSH, делает `git pull` и `docker compose up -d --build --remove-orphans`.
 
 ### GitHub Secrets, которые нужно создать
 
@@ -150,8 +149,7 @@ curl -X POST "http://127.0.0.1:3000/api/admin/provision?telegramId=291249764" \
 - `DEPLOY_PORT` — SSH-порт (по умолчанию `22`).
 
 ### Что должно быть подготовлено на сервере
-- установлен Node.js 22+;
-- установлен `pm2`;
+- установлен Docker + Docker Compose Plugin;
 - репозиторий уже склонирован в `DEPLOY_PATH`;
 - в рабочей папке настроен `.env` со всеми runtime-переменными;
 - пользователь имеет права на чтение/запись в `DEPLOY_PATH`.

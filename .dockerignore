@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.github
+.idea
+npm-debug.log
+Dockerfile*
+README.md
+SECURITY_AUDIT.md
+check_user.js
+*.local
