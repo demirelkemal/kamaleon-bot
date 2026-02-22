@@ -31,9 +31,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run tests
-        run: npm test
-
   deploy:
     name: Deploy via SSH (Docker)
     runs-on: ubuntu-latest

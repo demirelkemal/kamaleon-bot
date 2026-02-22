@@ -43,7 +43,19 @@ function profileKeyboard(): InlineKeyboard {
     .text('Получить QR/Инструкции', 'profile:qr');
 }
 
-async function sendPlans(chatId: number, bot: Bot): Promise<void> {
+function startActiveKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text('Профиль', 'menu:profile').text('Помощь', 'menu:help');
+}
+
+function createPlansKeyboard(plans: BotPlan[]): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  for (const plan of plans) {
+    keyboard.text(`${plan.name} • ${rub(plan.priceCents)}`, `plan:${plan.id}`).row();
+  }
+  return keyboard;
+}
+
+async function loadPlansForBot(): Promise<BotPlan[]> {
   let plans: BotPlan[] = [];
   try {
     const loadedPlans = await apiGetPlans();
@@ -57,14 +69,13 @@ async function sendPlans(chatId: number, bot: Bot): Promise<void> {
   if (plans.length === 0) {
     plans = fallbackPlans;
   }
+  return plans;
+}
 
-  const keyboard = new InlineKeyboard();
-  for (const plan of plans) {
-    keyboard.text(`${plan.name} • ${rub(plan.priceCents)}`, `plan:${plan.id}`).row();
-  }
-
+async function sendPlans(chatId: number, bot: Bot): Promise<void> {
+  const plans = await loadPlansForBot();
   await bot.api.sendMessage(chatId, 'Выберите тариф:', {
-    reply_markup: keyboard
+    reply_markup: createPlansKeyboard(plans)
   });
 }
 
@@ -159,6 +170,69 @@ async function sendWebProfileLink(chatId: number, telegramId: string, bot: Bot):
   );
 }
 
+function displayName(ctx: { from?: { username?: string; first_name?: string } }): string {
+  const username = ctx.from?.username;
+  if (typeof username === 'string' && username.length > 0) {
+    return `@${username}`;
+  }
+  const firstName = ctx.from?.first_name;
+  if (typeof firstName === 'string' && firstName.length > 0) {
+    return firstName;
+  }
+  return 'друг';
+}
+
+async function sendWelcomeWithPlans(chatId: number, userLabel: string, bot: Bot): Promise<void> {
+  const plans = await loadPlansForBot();
+  const text = [
+    `Добро пожаловать в kamaleonvpn, ${userLabel}!`,
+    '',
+    '🚀 высокая скорость',
+    '💃🏿 доступ ко всем сайтам',
+    '💰 месяц бесплатно!',
+    '',
+    '👫 Пригласите друзей в наш сервис!'
+  ].join('\n');
+
+  await bot.api.sendMessage(chatId, text, {
+    reply_markup: createPlansKeyboard(plans)
+  });
+}
+
+async function sendStartView(chatId: number, telegramId: string, userLabel: string, bot: Bot): Promise<void> {
+  try {
+    const subscription = await apiGetSubscription(telegramId);
+    if (subscription.status === 'active') {
+      await bot.api.sendMessage(
+        chatId,
+        [
+          `С возвращением, ${userLabel}!`,
+          `Текущий тариф: ${subscription.planTitle ?? '-'}`,
+          `Осталось дней: ${subscription.daysLeft}`,
+          `Действует до (UTC): ${formatDate(subscription.expiresAt)}`
+        ].join('\n'),
+        { reply_markup: startActiveKeyboard() }
+      );
+      return;
+    }
+  } catch (error) {
+    const details = formatBackendError(error);
+    logger.error({ error, details, telegramId }, 'Failed to build /start view, fallback to welcome');
+  }
+
+  await sendWelcomeWithPlans(chatId, userLabel, bot);
+}
+
+function appendReturnTo(paymentUrl: string, returnToPath: string): string {
+  try {
+    const url = new URL(paymentUrl);
+    url.searchParams.set('returnTo', returnToPath);
+    return url.toString();
+  } catch {
+    return paymentUrl;
+  }
+}
+
 export function createTelegramBot(): Bot | null {
   if (!config.botToken) {
     logger.warn('BOT_TOKEN is empty, Telegram bot is disabled');
@@ -175,16 +249,15 @@ export function createTelegramBot(): Bot | null {
   });
 
   bot.command('start', async (ctx) => {
-    if (!ctx.chat || !ctx.from) return;
-    await ctx.reply(
-      'Добро пожаловать в Kamaleon VPN.\nНажмите «Старт», чтобы открыть меню.',
-      {
-        reply_markup: new InlineKeyboard()
-          .text('Старт', 'menu:start')
-          .row()
-          .text('Профиль', 'menu:profile')
-      }
-    );
+    try {
+      if (!ctx.chat || !ctx.from) return;
+      const telegramId = String(ctx.from.id);
+      await sendStartView(ctx.chat.id, telegramId, displayName(ctx), bot);
+    } catch (error) {
+      const details = formatBackendError(error);
+      logger.error({ error, details }, 'Failed to handle /start');
+      await ctx.reply('Не удалось загрузить стартовое меню. Попробуйте еще раз чуть позже.');
+    }
   });
 
   bot.command('profile', async (ctx) => {
@@ -205,7 +278,7 @@ export function createTelegramBot(): Bot | null {
       await ctx.answerCallbackQuery();
 
       const telegramId = String(ctx.from.id);
-      await openMenu(ctx.chat.id, telegramId, bot);
+      await sendStartView(ctx.chat.id, telegramId, displayName(ctx), bot);
     } catch (error) {
       const details = formatBackendError(error);
       logger.error({ error, details }, 'Failed to handle start menu callback');
@@ -232,32 +305,39 @@ export function createTelegramBot(): Bot | null {
     }
   });
 
+  bot.callbackQuery('menu:help', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply('Помощь скоро появится.');
+  });
+
   bot.callbackQuery(/^plan:(.+)$/, async (ctx) => {
     try {
       if (!ctx.chat || !ctx.from) return;
       const planId = ctx.match[1];
       const telegramId = String(ctx.from.id);
       const order = await apiCreateOrder(telegramId, planId);
+      const profileLink = await apiCreateProfileLink(telegramId);
+      const profileUrl = new URL(profileLink.url);
+      const paymentUrl = appendReturnTo(order.paymentUrl, `${profileUrl.pathname}${profileUrl.search}`);
 
-      const canOpenInTelegram = isTelegramButtonUrlAllowed(order.paymentUrl);
+      const canOpenInTelegram = isTelegramButtonUrlAllowed(paymentUrl);
       await ctx.answerCallbackQuery();
 
       const text = [
         'Заказ создан.',
         'Оплатите по ссылке:',
-        order.paymentUrl,
+        paymentUrl,
         '',
-        'После подтверждения оплаты вернитесь в бот и нажмите «Получить QR/Инструкции».'
+        'После оплаты вы будете автоматически перенаправлены к шагам настройки.'
       ].join('\n');
 
       if (canOpenInTelegram) {
         const keyboard = new InlineKeyboard();
-        if (order.paymentUrl.startsWith('https://')) {
-          keyboard.webApp('Оплатить', order.paymentUrl);
+        if (paymentUrl.startsWith('https://')) {
+          keyboard.webApp('Оплатить', paymentUrl);
         } else {
-          keyboard.url('Оплатить', order.paymentUrl);
+          keyboard.url('Оплатить', paymentUrl);
         }
-        keyboard.row().text('Получить QR/Инструкции', 'profile:qr');
 
         await ctx.reply(text, {
           reply_markup: keyboard
@@ -266,7 +346,7 @@ export function createTelegramBot(): Bot | null {
       }
 
       await ctx.reply(text, {
-        reply_markup: new InlineKeyboard().text('Получить QR/Инструкции', 'profile:qr')
+        reply_markup: new InlineKeyboard().text('Профиль', 'menu:profile')
       });
     } catch (error) {
       const details = formatBackendError(error);
